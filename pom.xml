@@ -67,6 +67,15 @@
         <url>https://github.com/intuvance</url>
     </organization>
 
+    <!--
+        Required by Sonatype Central, which rejects a deployment whose POMs have no project URL.
+        It failed the first publish attempt for all ten modules with "Project URL is not defined",
+        one error per component. The url element inside the scm block below does not satisfy this,
+        since Central reads the project-level element only, and neither does the one in
+        organization. Declared here so all nine child modules inherit it.
+    -->
+    <url>https://github.com/intuvance/openmrs-module-initializer</url>
+
     <scm>
         <connection>scm:git:git@github.com:intuvance/openmrs-module-initializer.git</connection>
         <developerConnection>scm:git:git@github.com:intuvance/openmrs-module-initializer.git</developerConnection>
