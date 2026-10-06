@@ -11,27 +11,67 @@
         <version>1.1.1</version>
     </parent>
 
-    <groupId>org.openmrs.module</groupId>
+    <!--
+        Intuvance fork.
+
+        The groupId, version and metadata below are the only divergence from upstream. Two things
+        must NOT change, and are deliberately left exactly as upstream has them:
+
+          * <artifactId>initializer</artifactId> — omod/src/main/resources/config.xml filters the
+            OpenMRS module id from ${project.parent.artifactId}. Rename the artifact and the
+            installed module id changes with it, at which point this module sits ALONGSIDE the
+            upstream initializer instead of replacing it. Two Initializer modules on the classpath
+            is a worse failure than the bug this fork fixes, because whichever one the classloader
+            happens to resolve wins silently.
+
+          * <artifactId>initializer-omod</artifactId> and the api-* artifactIds — so that a
+            consumer only has to change the groupId, and so the omod's own
+            ${project.parent.artifactId}-api dependency references keep resolving.
+
+        The version carries an -intuvance qualifier so the provenance is visible in OpenMRS'
+        startup logs, which print the module id and version at boot. Without it a patched module
+        reports itself as plain 2.12.1 and there is no way to tell from the logs which Initializer
+        is actually running.
+    -->
+    <groupId>io.github.intuvance</groupId>
     <artifactId>initializer</artifactId>
-    <version>2.12.1</version>
+    <version>2.12.1-intuvance.1</version>
     <packaging>pom</packaging>
-    <name>Initializer</name>
-    <description>The OpenMRS Initializer module is an API-only module that processes the content of the configuration folder when it is found inside OpenMRS' application data directory.</description>
+    <name>OpenMRS Initializer (Intuvance)</name>
+    <description>Intuvance fork of the OpenMRS Initializer module. The Initializer processes the content of the configuration folder when it is found inside OpenMRS application data directory. This fork changes one behaviour in MappingsConceptLineProcessor: a content package line that declares no concept mappings no longer deletes the concepts existing mappings. Upstream cleared them unconditionally, which silently destroyed a pre-populated databases terminology on its first boot.</description>
+
+    <licenses>
+        <license>
+            <name>MIT License</name>
+            <url>https://opensource.org/licenses/MIT</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
 
     <developers>
         <developer>
+            <id>mekomsolutions</id>
             <name>Mekom Solutions</name>
+            <organization>Mekom Solutions</organization>
+            <organizationUrl>https://www.mekomsolutions.com</organizationUrl>
+        </developer>
+        <developer>
+            <id>intuvance</id>
+            <name>Intuvance</name>
+            <organization>Intuvance</organization>
+            <organizationUrl>https://github.com/intuvance</organizationUrl>
         </developer>
     </developers>
     <organization>
-        <name>Mekom Solutions</name>
-        <url>http://www.mekomsolutions.com</url>
+        <name>Intuvance</name>
+        <url>https://github.com/intuvance</url>
     </organization>
 
     <scm>
-        <connection>scm:git@github.com:mekomsolutions/openmrs-module-initializer.git</connection>
-        <developerConnection>scm:git:git@github.com:mekomsolutions/openmrs-module-initializer.git</developerConnection>
-        <url>https://github.com/mekomsolutions/openmrs-module-initializer</url>
+        <connection>scm:git:git@github.com:intuvance/openmrs-module-initializer.git</connection>
+        <developerConnection>scm:git:git@github.com:intuvance/openmrs-module-initializer.git</developerConnection>
+        <url>https://github.com/intuvance/openmrs-module-initializer</url>
+        <tag>HEAD</tag>
     </scm>
 
     <modules>
@@ -53,6 +93,52 @@
                 <module>validator-first-dependency</module>
                 <module>validator</module>
             </modules>
+        </profile>
+        <!--
+            Activated by -Prelease. GPG signing is kept out of the default build so that an
+            ordinary `mvn install` on a developer machine does not require a private key.
+
+            Requires a GPG signing key reachable by the plugin, and a Maven `server` entry with
+            the id `central` carrying the Central Portal user token in ~/.m2/settings.xml. See
+            RELEASE.md for the full procedure, including the pinentry settings gpg-agent needs
+            when the key has a passphrase.
+        -->
+        <profile>
+            <id>release</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>3.2.4</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.sonatype.central</groupId>
+                        <artifactId>central-publishing-maven-plugin</artifactId>
+                        <version>0.7.0</version>
+                        <extensions>true</extensions>
+                        <configuration>
+                            <publishingServerId>central</publishingServerId>
+                            <!--
+                                Auto-publish drops the bundle straight into Central. Set to true
+                                only if that is wanted; leaving it false means the bundle is
+                                created and then released explicitly from the Portal UI, which is
+                                the safer default for a first upload.
+                            -->
+                            <autoPublish>false</autoPublish>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
         </profile>
     </profiles>
 
@@ -353,6 +439,49 @@
                     <target>1.8</target>
                 </configuration>
             </plugin>
+            <!--
+                Central requires a sources jar and a javadoc jar with every release. The parent
+                pom only attaches them from its own `release` profile, at versions (source
+                2.1.2, javadoc 2.8.1) that predate modern doclint and will fail on the JDK this
+                builds with. Pinned here so the build is reproducible, and with failOnError so a
+                javadoc problem fails the release rather than producing an artifact that Central
+                rejects on upload.
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>3.3.1</version>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>3.6.3</version>
+                <configuration>
+                    <doclint>none</doclint>
+                    <quiet>true</quiet>
+                    <failOnError>true</failOnError>
+                    <detectJavaApiLink>false</detectJavaApiLink>
+                    <detectOfflineLinks>false</detectOfflineLinks>
+                    <failOnWarnings>false</failOnWarnings>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>attach-javadocs</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>net.revelc.code.formatter</groupId>
                 <artifactId>formatter-maven-plugin</artifactId>
@@ -452,17 +581,20 @@
         </pluginRepository>
     </pluginRepositories>
 
-    <distributionManagement>
-      <repository>
-        <id>mks-repo</id>
-        <name>Mekom Solutions Nexus Releases</name>
-        <url>https://nexus.mekomsolutions.net/repository/maven-releases</url>
-      </repository>
-      <snapshotRepository>
-        <id>mks-repo-snapshots</id>
-        <name>Mekom Solutions Nexus Snapshots</name>
-        <url>https://nexus.mekomsolutions.net/repository/maven-snapshots</url>
-      </snapshotRepository>
-    </distributionManagement>
+    <!--
+        Sonatype Central Portal, not the OpenMRS or Mekom Nexus.
+
+        Overridden deliberately: the inherited distributionManagement still pointed at
+        nexus.mekomsolutions.net, which is a plain Nexus without the staging, checksumming and
+        signature requirements Central enforces, so a `mvn deploy` against it would produce
+        artifacts that are accepted locally and rejected on upload.
+
+        Central Portal ignores <distributionManagement> entirely — org.sonatype.central:
+        central-publishing-maven-plugin uploads to the Portal API using a user token, so there is
+        nothing to point at here. The block is removed rather than repointed so that a stray
+        `mvn deploy` fails loudly instead of silently publishing to the wrong place.
+    -->
+
+
 
 </project>

@@ -1,5 +1,38 @@
 # OpenMRS Initializer module
 
+> **This is the Intuvance fork.** It is upstream
+> [mekomsolutions/openmrs-module-initializer](https://github.com/mekomsolutions/openmrs-module-initializer)
+> at release `2.12.1`, with exactly one behavioural change. Everything else — the
+> domains, the CSV grammar, the loading order, the runtime configuration — is
+> unchanged, and the OpenMRS module id is still `initializer`, so this module
+> *replaces* the upstream one rather than sitting alongside it.
+>
+> **The change.** `MappingsConceptLineProcessor` no longer deletes a concept's
+> reference mappings when a content package line does not restate them.
+>
+> Upstream cleared `concept.getConceptMappings()` before it looked at the line at
+> all, on the assumption that any CSV reaching it was authoritative for them. That
+> is destructive for a distribution that starts from a pre-populated database: a
+> content package that only adds a name or a description to concepts which already
+> carry CIEL mappings wipes those mappings without ever restating them. The CSV
+> grammar cannot restate them either — it allows one mapping per column — so
+> there is no way to recover by editing the content package. Measured on the
+> Intuvance OpenMRS O3 distribution: **18,882 CIEL mappings became 724 on the
+> first boot after seeding**, silently, with nothing logged above WARN, and every
+> feature that resolves a concept by an external code — drug and lab order entry,
+> medication workflows, concept search, FHIR concept translation — quietly returned
+> nothing.
+>
+> Now a line that declares no mappings leaves the existing mappings alone. A line
+> that declares some still replaces them wholesale, so content packages that *do*
+> author mappings keep the upstream "the CSV wins" semantics exactly. Collecting the
+> mappings before touching the concept also means a line that turns out to be
+> invalid part-way through no longer takes the concept's existing mappings with it.
+>
+> Upstream discussion and the reasoning behind the original behaviour are worth
+> reading before proposing this upstream: the `clear()` is currently the only way a
+> CSV can express *deleting* a mapping.
+
 - [Introduction](#introduction)
 - [Goals](#goals)
 - [Supported domains and default loading order](#supported-domains-and-default-loading-order)
