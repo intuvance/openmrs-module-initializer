@@ -38,7 +38,7 @@
     <version>2.12.1-intuvance.1</version>
     <packaging>pom</packaging>
     <name>OpenMRS Initializer (Intuvance)</name>
-    <description>Intuvance fork of the OpenMRS Initializer module. The Initializer processes the content of the configuration folder when it is found inside OpenMRS application data directory. This fork changes one behaviour in MappingsConceptLineProcessor: a content package line that declares no concept mappings no longer deletes the concepts existing mappings. Upstream cleared them unconditionally, which silently destroyed a pre-populated databases terminology on its first boot.</description>
+    <description>Intuvance fork of the OpenMRS Initializer module. The Initializer processes the content of the configuration folder when it is found inside OpenMRS application data directory. This fork changes one behaviour, applied in four line processors: a content package line that declares no concept mappings, concept set members or answers, descriptions, or drug reference maps no longer deletes what the concept or drug already had. Upstream cleared each of those collections before reading the line, which silently destroyed a pre-populated database's terminology on its first boot. A line that does declare them still replaces them wholesale, so the upstream "the CSV wins" semantics are unchanged.</description>
 
     <licenses>
         <license>
@@ -95,8 +95,15 @@
             </modules>
         </profile>
         <!--
-            Activated by -Prelease. GPG signing is kept out of the default build so that an
-            ordinary `mvn install` on a developer machine does not require a private key.
+            Activated by -Ppublish, NOT -Prelease, and the name is load-bearing. The parent pom
+            defines a profile called `release`, so `-Prelease` activates that one too; both then
+            declare a maven-source-plugin execution with the id `attach-sources`, which Maven merges
+            into a single execution with two goals and the build fails with "Presumably you have
+            configured maven-source-plugin to execute twice in your build". Calling this `publish`
+            keeps the parent's `release` dormant. See the comment on maven-source-plugin above.
+
+            GPG signing is kept out of the default build so that an ordinary `mvn install` on a
+            developer machine does not require a private key.
 
             Requires a GPG signing key reachable by the plugin, and a Maven `server` entry with
             the id `central` carrying the Central Portal user token in ~/.m2/settings.xml. See
@@ -104,7 +111,7 @@
             when the key has a passphrase.
         -->
         <profile>
-            <id>release</id>
+            <id>publish</id>
             <build>
                 <plugins>
                     <plugin>
@@ -446,6 +453,22 @@
                 builds with. Pinned here so the build is reproducible, and with failOnError so a
                 javadoc problem fails the release rather than producing an artifact that Central
                 rejects on upload.
+
+                These sit in the top-level build rather than in the fork's release profile, and
+                that placement is deliberate. The parent pom has a profile of its own called
+                `release` which attaches the same two jars from `attach-sources`/`attach-javadocs`,
+                using maven-source-plugin 2.1.2 and maven-javadoc-plugin 2.8.1. Maven merges
+                executions by id, so activating both fused the inherited `jar` goal with the
+                `jar-no-fork` here into one execution with two goals, and the build died with
+                "Presumably you have configured maven-source-plugin to execute twice in your
+                build". Renaming the inherited execution is not an option either, since the two
+                would then both attach a jar under the `sources` classifier and be rejected the
+                same way.
+
+                So the fork's profile that signs and uploads is named `publish`, not `release`,
+                and deliberately does not declare these two plugins. `-Ppublish` never activates
+                the parent's `release`, so its ancient plugin versions never enter the build and
+                the pinned versions above are the only definition.
             -->
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>

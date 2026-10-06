@@ -103,8 +103,14 @@ mvn -pl api clean test -Dtest=MappingsConceptLineProcessorTest
 #    expected: Tests run: 10, Failures: 0, Errors: 0
 
 # 3. Full suite, then publish.
+#    -Ppublish, NOT -Prelease. The parent pom has its own profile called `release`
+#    that attaches a second sources jar, and Maven merges the two `attach-sources`
+#    executions into one with two goals, failing the build with "Presumably you
+#    have configured maven-source-plugin to execute twice". Naming this profile
+#    `publish` keeps the parent's `release` dormant. See the comment on
+#    maven-source-plugin in pom.xml.
 mvn clean install
-mvn -Prelease clean deploy
+mvn -Ppublish clean deploy
 
 # 4. Release the bundle.
 #    central-publishing-maven-plugin is configured with <autoPublish>false</autoPublish>,
@@ -169,6 +175,9 @@ git fetch upstream
 git rebase upstream/2.12.2        # or the equivalent release tag
 ```
 
-Expect the patch to apply cleanly, since it only touches the body of `fill()`. If
-upstream ever changes the mappings grammar, revisit it: the fix assumes that a line
-declaring no mappings is not asking for the concept's mappings to be emptied.
+Expect the patch to apply cleanly, since it only touches the bodies of four
+`fill()` methods. If upstream ever changes the grammar for any of them, revisit
+the fix: it assumes that a line declaring nothing is not asking for the existing
+terminology to be emptied. That assumption is also the one capability this fork
+gives up, since the upstream `clear()` was the only way a CSV could express
+deleting a mapping, a set member, an answer or a description.
