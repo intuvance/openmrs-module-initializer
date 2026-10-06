@@ -2,36 +2,56 @@
 
 > **This is the Intuvance fork.** It is upstream
 > [mekomsolutions/openmrs-module-initializer](https://github.com/mekomsolutions/openmrs-module-initializer)
-> at release `2.12.1`, with exactly one behavioural change. Everything else — the
-> domains, the CSV grammar, the loading order, the runtime configuration — is
-> unchanged, and the OpenMRS module id is still `initializer`, so this module
-> *replaces* the upstream one rather than sitting alongside it.
+> at release `2.12.1`, with one behavioural change, applied in four places.
+> Everything else — the domains, the CSV grammar, the loading order, the runtime
+> configuration — is unchanged, and the OpenMRS module id is still `initializer`,
+> so this module *replaces* the upstream one rather than sitting alongside it.
 >
-> **The change.** `MappingsConceptLineProcessor` no longer deletes a concept's
-> reference mappings when a content package line does not restate them.
+> **The change.** A content package that does not restate a concept's existing
+> terminology no longer deletes it. Applies to a concept's reference mappings, its
+> concept set membership and answers, its descriptions, and a drug's reference maps.
 >
-> Upstream cleared `concept.getConceptMappings()` before it looked at the line at
-> all, on the assumption that any CSV reaching it was authoritative for them. That
-> is destructive for a distribution that starts from a pre-populated database: a
-> content package that only adds a name or a description to concepts which already
-> carry CIEL mappings wipes those mappings without ever restating them. The CSV
-> grammar cannot restate them either — it allows one mapping per column — so
-> there is no way to recover by editing the content package. Measured on the
-> Intuvance OpenMRS O3 distribution: **18,882 CIEL mappings became 724 on the
-> first boot after seeding**, silently, with nothing logged above WARN, and every
-> feature that resolves a concept by an external code — drug and lab order entry,
-> medication workflows, concept search, FHIR concept translation — quietly returned
-> nothing.
+> Upstream each of those four processors cleared the relevant collection before it
+> looked at the line at all, on the assumption that any CSV reaching it was
+> authoritative. That is destructive for a distribution that starts from a
+> pre-populated database: a content package that only adds a name or a description
+> to concepts which already carry CIEL mappings wipes those mappings without ever
+> restating them. The CSV grammar cannot restate them either — it allows one mapping
+> per column — so there is no way to recover by editing the content package.
+> Measured on the Intuvance OpenMRS O3 distribution: **18,882 CIEL mappings became
+> 724 on the first boot after seeding**, silently, with nothing logged above WARN,
+> and every feature that resolves a concept by an external code — drug and lab order
+> entry, medication workflows, concept search, FHIR concept translation — quietly
+> returned nothing.
 >
-> Now a line that declares no mappings leaves the existing mappings alone. A line
-> that declares some still replaces them wholesale, so content packages that *do*
-> author mappings keep the upstream "the CSV wins" semantics exactly. Collecting the
-> mappings before touching the concept also means a line that turns out to be
-> invalid part-way through no longer takes the concept's existing mappings with it.
+> The same pattern cost concept set membership and answers, descriptions, and drug
+> reference maps, and those were worse in one respect: `ConceptLineProcessor` cleared
+> descriptions with no guard at all, not even the presence of a description column.
+> A concepts.csv row that merely renamed a concept emptied every description it
+> already had. `NestedConceptLineProcessor` cleared `concept.getConceptSets()` — the
+> live collection behind `getSetMembers()` — and reset the concept's set flag, so a
+> package carrying a `Members` column but leaving the cell blank for a given concept
+> removed that concept from its sets. Concept sets drive panels and decision support,
+> so they disappear just as quietly.
+>
+> | Processor | Was cleared unconditionally when | Now |
+> | --- | --- | --- |
+> | `MappingsConceptLineProcessor` | any row | left alone unless the row declares mappings |
+> | `NestedConceptLineProcessor` | a row in a file with an `Answers`/`Members` column | left alone unless the row declares them |
+> | `ConceptLineProcessor` | any row | left alone unless the row declares a description |
+> | `MappingsDrugLineProcessor` | any row | left alone unless the row declares reference maps |
+>
+> A line that declares some still replaces them wholesale, so content packages that
+> *do* author these keep the upstream "the CSV wins" semantics exactly. Collecting
+> the declared values before touching the object also means a line that turns out to
+> be invalid part-way through — an unresolvable concept source, an unknown map type —
+> no longer takes the existing terminology down with it.
 >
 > Upstream discussion and the reasoning behind the original behaviour are worth
 > reading before proposing this upstream: the `clear()` is currently the only way a
-> CSV can express *deleting* a mapping.
+> CSV can express *deleting* a mapping. That remains true, and the fork accepts that
+> a package can no longer blank out terminology by omission. Use the explicit retire
+> or void columns for that.
 
 - [Introduction](#introduction)
 - [Goals](#goals)

@@ -17,6 +17,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Component;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Component("initializer.mappingsDrugLineProcessor")
 public class MappingsDrugLineProcessor extends DrugLineProcessor {
 	
@@ -33,9 +36,22 @@ public class MappingsDrugLineProcessor extends DrugLineProcessor {
 	
 	public Drug fill(Drug drug, CsvLine line) throws IllegalArgumentException {
 		
-		if (!CollectionUtils.isEmpty(drug.getDrugReferenceMaps())) {
-			drug.getDrugReferenceMaps().clear();
-		}
+		// Intuvance change: parse the line first and mutate the drug only once it is known what the
+		// line actually declared.
+		//
+		// Upstream cleared drug.getDrugReferenceMaps() before it looked at the line at all. This is
+		// the same destructive bug already fixed in MappingsConceptLineProcessor, one class over: a
+		// drugs.csv row that declares no mappings -- or that declares none at all, because the file
+		// has no mapping columns -- destroyed the drug's existing reference maps, which is how a
+		// drug resolves from a code such as an RxNorm or a local formulary code. A row that failed
+		// validation part-way through, for an unresolvable concept source or map type, took them down
+		// with it as well, because they were already gone by the time the exception was thrown.
+		//
+		// With this change:
+		//   * a line that declares no mappings leaves existing reference maps untouched
+		//   * a line that declares some still replaces them wholesale, so packages that do author
+		//     mappings keep the upstream "the CSV wins" semantics exactly
+		List<DrugReferenceMap> declared = new ArrayList<DrugReferenceMap>();
 		
 		for (String header : line.getHeaderLine()) {
 			
@@ -100,10 +116,26 @@ public class MappingsDrugLineProcessor extends DrugLineProcessor {
 						map.setConceptMapType(mapType);
 						map.setConceptReferenceTerm(refTerm);
 						
-						drug.addDrugReferenceMap(map);
+						declared.add(map);
 					}
 				}
 			}
+		}
+		
+		if (declared.isEmpty()) {
+			if (!CollectionUtils.isEmpty(drug.getDrugReferenceMaps())) {
+				log.debug("Line declares no drug reference maps; preserving the {} existing reference map(s) of drug {}",
+				    drug.getDrugReferenceMaps().size(), drug.getUuid());
+			}
+			return drug;
+		}
+		
+		if (!CollectionUtils.isEmpty(drug.getDrugReferenceMaps())) {
+			drug.getDrugReferenceMaps().clear();
+		}
+		
+		for (DrugReferenceMap map : declared) {
+			drug.addDrugReferenceMap(map);
 		}
 		
 		return drug;

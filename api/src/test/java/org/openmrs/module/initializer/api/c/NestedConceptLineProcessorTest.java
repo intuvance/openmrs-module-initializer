@@ -123,4 +123,220 @@ public class NestedConceptLineProcessorTest {
 		Assert.assertNull(c.getAnswers());
 		Assert.assertNull(c.getSetMembers());
 	}
+	
+	/*
+	 * Regression coverage for the change that made this processor non-destructive.
+	 *
+	 * Upstream cleared concept.getConceptSets() and concept.getAnswers() as soon as the header line
+	 * contained the relevant column, before reading this row's value. conceptSets is the live
+	 * collection behind getSetMembers(), so on a seeded database that deletes concept set membership
+	 * the concept already had -- and resets the set flag with it.
+	 */
+	
+	@Test
+	public void fill_shouldPreserveExistingSetMembersWhenTheRowDeclaresNone() {
+		
+		// Setup: a concept that is already a member of a set, from a previous install
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { null, null };
+		
+		Concept c = conceptWithSetMembers("cambodia:123");
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif: the membership that was already there survives
+		Assert.assertEquals(1, c.getSetMembers().size());
+		Assert.assertTrue(memberUuids(c).contains("cambodia:123"));
+	}
+	
+	@Test
+	public void fill_shouldPreserveExistingSetMembersWhenNoMemberColumnIsPresent() {
+		
+		// Setup: a content package row that only carries, say, a name
+		String[] headerLine = { "Fully specified name:en" };
+		String[] line = { "Bronchospasm" };
+		
+		Concept c = conceptWithSetMembers("cambodia:123");
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif
+		Assert.assertEquals(1, c.getSetMembers().size());
+		Assert.assertTrue(memberUuids(c).contains("cambodia:123"));
+	}
+	
+	@Test
+	public void fill_shouldPreserveTheSetFlagWhenTheRowDeclaresNoMembers() {
+		
+		// Setup: upstream also called setSet(false) here, so a concept that is a set stopped being
+		// treated as one
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { null, null };
+		
+		Concept c = conceptWithSetMembers("cambodia:123");
+		c.setSet(true);
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif
+		Assert.assertTrue(c.getSet());
+	}
+	
+	@Test
+	public void fill_shouldPreserveEveryPreExistingSetMemberNotJustTheFirst() {
+		
+		// Setup: the realistic case is a panel with many members
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { null, null };
+		
+		Concept c = conceptWithSetMembers("cambodia:123", "cambodia:456", "CIEL:789", "CIEL:abc");
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif: all four survive
+		Assert.assertEquals(4, c.getSetMembers().size());
+	}
+	
+	@Test
+	public void fill_shouldPreserveExistingAnswersWhenTheRowDeclaresNone() {
+		
+		// Setup
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { null, null };
+		
+		Concept c = new Concept();
+		c.addAnswer(new ConceptAnswer(concept("cambodia:123")));
+		c.addAnswer(new ConceptAnswer(concept("cambodia:456")));
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif
+		Assert.assertEquals(2, c.getAnswers().size());
+	}
+	
+	@Test
+	public void fill_shouldStillReplaceExistingSetMembersWhenTheRowDeclaresThem() {
+		
+		// Setup: this is the upstream semantic, and it must not regress. A package that genuinely
+		// authors membership stays authoritative over it.
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { null, "cambodia:999" };
+		
+		Concept c = conceptWithSetMembers("cambodia:123");
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif: replaced, not merged
+		Assert.assertEquals(1, c.getSetMembers().size());
+		Assert.assertTrue(memberUuids(c).contains("cambodia:999"));
+		Assert.assertFalse(memberUuids(c).contains("cambodia:123"));
+	}
+	
+	@Test
+	public void fill_shouldStillReplaceExistingAnswersWhenTheRowDeclaresThem() {
+		
+		// Setup
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { "cambodia:999", null };
+		
+		Concept c = new Concept();
+		c.addAnswer(new ConceptAnswer(concept("cambodia:123")));
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif
+		Assert.assertEquals(1, c.getAnswers().size());
+	}
+	
+	@Test
+	public void fill_shouldStillSetTheSetFlagWhenTheRowDeclaresMembers() {
+		
+		// Setup: the counterpart of the preservation case, so the flag is not simply never set again
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { null, "cambodia:999" };
+		
+		Concept c = new Concept();
+		c.setSet(false);
+		
+		// Replay
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		p.fill(c, new CsvLine(headerLine, line));
+		
+		// Verif
+		Assert.assertTrue(c.getSet());
+	}
+	
+	@Test
+	public void fill_shouldNotClearSetMembersWhenAMemberCannotBeResolved() {
+		
+		// Setup: an unresolvable child. Upstream cleared the membership first and then threw, so a
+		// typo in a content package silently emptied the concept set along with rejecting the row.
+		// Thrown from the mock rather than returned as null, because a null would send
+		// Utils.fetchConcept off to look the name up as a fully specified name through the OpenMRS
+		// Context, which is not available in a plain unit test.
+		when(cs.getConceptByMapping("no-such-code", "no-such-source"))
+		        .thenThrow(new IllegalArgumentException("no such code"));
+		
+		String[] headerLine = { "Answers", "Members" };
+		String[] line = { null, "no-such-source:no-such-code" };
+		
+		Concept c = conceptWithSetMembers("cambodia:123");
+		
+		// Replay and verify the row still fails
+		NestedConceptLineProcessor p = new NestedConceptLineProcessor(cs, new ConceptListParser(cs));
+		try {
+			p.fill(c, new CsvLine(headerLine, line));
+			Assert.fail("expected an IllegalArgumentException for the unresolvable child");
+		}
+		catch (IllegalArgumentException expected) {
+			// the row is rejected...
+		}
+		
+		// ...but the membership was not collateral damage
+		Assert.assertEquals(1, c.getSetMembers().size());
+		Assert.assertTrue(memberUuids(c).contains("cambodia:123"));
+	}
+	
+	/**
+	 * A concept that already belongs to the given set members, as a seeded database would have it.
+	 */
+	private static Concept conceptWithSetMembers(String... sourceAndCodes) {
+		
+		Concept c = new Concept();
+		c.setSet(true);
+		for (String sourceAndCode : sourceAndCodes) {
+			c.addSetMember(concept(sourceAndCode));
+		}
+		return c;
+	}
+	
+	private static Concept concept(String sourceAndCode) {
+		
+		Concept c = new Concept();
+		c.setUuid(sourceAndCode);
+		return c;
+	}
+	
+	private static Set<String> memberUuids(Concept c) {
+		
+		Set<String> uuids = new HashSet<String>();
+		for (Concept member : c.getSetMembers()) {
+			uuids.add(member.getUuid());
+		}
+		return uuids;
+	}
 }

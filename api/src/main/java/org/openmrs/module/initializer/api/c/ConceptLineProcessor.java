@@ -167,14 +167,26 @@ public class ConceptLineProcessor extends BaseLineProcessor<Concept> {
 		}
 		
 		// Descriptions
-		if (!CollectionUtils.isEmpty(concept.getDescriptions())) {
-			concept.getDescriptions().clear();
-		}
+		//
+		// Intuvance change: collect first, clear only if this row actually declares a description.
+		//
+		// Upstream cleared concept.getDescriptions() unconditionally, before it had looked at the line
+		// at all -- not even gated on a description column being present. So every single row of every
+		// concepts.csv emptied the descriptions of concepts that a seeded database already had, and a
+		// row that went on to fail validation took them with it.
+		List<ConceptDescription> declaredDescriptions = new ArrayList<ConceptDescription>();
 		LocalizedHeader lh = getLocalizedHeader(line.getHeaderLine(), HEADER_DESC);
 		for (Locale locale : lh.getLocales()) {
 			String desc = line.get(lh.getI18nHeader(locale));
 			if (!StringUtils.isEmpty(desc)) {
-				ConceptDescription conceptDesc = new ConceptDescription(desc, locale);
+				declaredDescriptions.add(new ConceptDescription(desc, locale));
+			}
+		}
+		if (!declaredDescriptions.isEmpty()) {
+			if (!CollectionUtils.isEmpty(concept.getDescriptions())) {
+				concept.getDescriptions().clear();
+			}
+			for (ConceptDescription conceptDesc : declaredDescriptions) {
 				concept.addDescription(conceptDesc);
 			}
 		}
