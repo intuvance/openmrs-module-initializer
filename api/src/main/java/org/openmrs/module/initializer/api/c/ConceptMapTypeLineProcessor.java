@@ -8,7 +8,7 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class ConceptMapTypeLineProcessor extends BaseLineProcessor<ConceptMapType> {
-
+	
 	public static final String HEADER_IS_HIDDEN = "Is hidden";
 	
 	public ConceptMapType fill(ConceptMapType mapType, CsvLine line) throws IllegalArgumentException {

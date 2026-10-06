@@ -293,10 +293,34 @@ public class ConceptsLoaderIntegrationTest extends DomainBaseModuleContextSensit
 			Assert.assertNull(cs.getConceptByName("Unexisting concept answer"));
 			Assert.assertNull(cs.getConceptByName("Unexisting set member"));
 			
-			// Verify modified (set members removed)
+			// Intuvance change: this used to assert the opposite. Upstream cleared
+			// concept.getConceptSets() whenever the header line contained a Members column, before it
+			// had read this row's value, so the row below -- whose Members cell is blank -- was how a
+			// content package emptied a concept set. The standard test dataset seeds concept 5503
+			// with two members (8bc5043c and 8bc506bc), and CONCEPT_REMOVE_MEMBERS existed only to
+			// demonstrate that they were destroyed.
+			//
+			// That is the same data-loss bug fixed in MappingsConceptLineProcessor: on a distribution
+			// seeded from a pre-populated database, any concepts.csv that carries a Members column at
+			// all -- which it must, to declare membership for even one concept -- silently strips
+			// membership from every concept it leaves blank. Concepts sets drive panels and decision
+			// support, so they go missing with nothing logged above WARN.
+			//
+			// A row that does declare members still replaces them wholesale, which is what the two
+			// assertions just above verify.
+			// The surviving members are the two from the standard test dataset, not the nestedUuids
+			// above -- those are the members concepts_nested.csv creates for its own sets.
+			Set<String> seededMemberUuids = new HashSet<String>(Arrays.asList(
+			    new String[] { "542c18f3-a837-41d4-92e9-be53dc825302", "13f62545-d0de-4f7b-a86f-04b91afee2d3" }));
+			
 			c = cs.getConceptByUuid("d803e973-1010-4415-8659-c011dec707c0");
-			Assert.assertTrue(CollectionUtils.isEmpty(c.getSetMembers()));
-			Assert.assertFalse(c.isSet());
+			Assert.assertNotNull(c);
+			Assert.assertFalse(CollectionUtils.isEmpty(c.getSetMembers()));
+			assertEquals(2, c.getSetMembers().size());
+			for (Concept nested : c.getSetMembers()) {
+				Assert.assertTrue(seededMemberUuids.contains(nested.getUuid()));
+			}
+			Assert.assertTrue(c.isSet());
 		}
 		
 		// Verify. 'mappings' CSV loading
