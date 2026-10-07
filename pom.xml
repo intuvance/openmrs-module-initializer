@@ -35,7 +35,7 @@
     -->
     <groupId>io.github.intuvance</groupId>
     <artifactId>initializer</artifactId>
-    <version>2.12.1-intuvance.1</version>
+    <version>2.12.1-intuvance.2</version>
     <packaging>pom</packaging>
     <name>OpenMRS Initializer (Intuvance)</name>
     <description>Intuvance fork of the OpenMRS Initializer module. The Initializer processes the content of the configuration folder when it is found inside OpenMRS application data directory. This fork changes one behaviour, applied in four line processors: a content package line that declares no concept mappings, concept set members or answers, descriptions, or drug reference maps no longer deletes what the concept or drug already had. Upstream cleared each of those collections before reading the line, which silently destroyed a pre-populated database's terminology on its first boot. A line that does declare them still replaces them wholesale, so the upstream "the CSV wins" semantics are unchanged.</description>

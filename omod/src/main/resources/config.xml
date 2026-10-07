@@ -6,7 +6,25 @@
 	<id>${project.parent.artifactId}</id>
 	<name>${project.parent.name}</name>
 	<version>${project.parent.version}</version>
-	<package>${project.parent.groupId}.${project.parent.artifactId}</package>
+	<!--
+		Hard-coded, and deliberately NOT ${project.parent.groupId}.${project.parent.artifactId}.
+
+		OpenMRS resolves a module's <require_module> dependencies by matching the required name
+		against Module.getPackageName(), which is this element, and there is no fallback to the
+		module id. So this value is a public API that other modules hard-code.
+
+		The module's Java classes have never moved: they are in org.openmrs.module.initializer,
+		as <activator> below still shows. Deriving this from the Maven coordinates changed it to
+		io.github.intuvance.initializer when the fork was published under a new groupId, and every
+		module declaring a dependency on org.openmrs.module.initializer then failed to start.
+		patientdocuments 1.1.0 requires "org.openmrs.module.initializer" version 2.9.0, so it was
+		rejected at startup with "cannot be started because it requires the following module(s):
+		initializer 2.9.0" while the Initializer itself was running perfectly well.
+
+		Keep this equal to the package the classes are compiled into. The Maven groupId may be
+		whatever is needed to publish the fork; it must not leak into here.
+	-->
+	<package>org.openmrs.module.initializer</package>
 	<author>${project.parent.organization.name}</author>
 	<description>${project.parent.description}</description>
 
